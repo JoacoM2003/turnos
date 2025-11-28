@@ -12,6 +12,7 @@ from app.application.schemas.recurso_schemas import RecursoResponse
 from app.infrastructure.db.database import get_session
 from app.infrastructure.db.models.servicio_model import ServicioModel
 from app.infrastructure.db.models.recurso_model import RecursoModel
+from app.infrastructure.db.models.proveedor_model import ProveedorModel
 from app.core.security import get_current_proveedor
 from app.domain.entities.user import User
 
@@ -24,10 +25,7 @@ def crear_servicio(
     current_user: User = Depends(get_current_proveedor),
     session: Session = Depends(get_session)
 ):
-    """
-    Crea un nuevo tipo de servicio (solo proveedores)
-    Ejemplo: "Fútbol 5", "Tenis", "Paddle"
-    """
+    """Crea un nuevo tipo de servicio (solo proveedores)"""
     try:
         from app.infrastructure.repositories.proveedor_repository import SQLAlchemyProveedorRepository
         proveedor_repo = SQLAlchemyProveedorRepository(session)
@@ -68,9 +66,7 @@ def listar_mis_servicios(
     current_user: User = Depends(get_current_proveedor),
     session: Session = Depends(get_session)
 ):
-    """
-    Lista los servicios del proveedor autenticado con sus recursos
-    """
+    """Lista los servicios del proveedor autenticado con sus recursos"""
     try:
         from app.infrastructure.repositories.proveedor_repository import SQLAlchemyProveedorRepository
         proveedor_repo = SQLAlchemyProveedorRepository(session)
@@ -92,7 +88,6 @@ def listar_mis_servicios(
                 RecursoModel.servicio_id == servicio.id
             ).all()
             
-            # Construir manualmente el response
             resultado.append(ServicioWithRecursosResponse(
                 id=servicio.id,
                 proveedor_id=servicio.proveedor_id,
@@ -116,15 +111,63 @@ def listar_mis_servicios(
         )
 
 
+@router.get('/proveedores', response_model=List[dict])
+def listar_proveedores(session: Session = Depends(get_session)):
+    """Lista todos los proveedores que tienen servicios activos"""
+    try:
+        proveedores = session.query(
+            ProveedorModel.id,
+            ProveedorModel.nombre,
+            ProveedorModel.apellido,
+            ProveedorModel.especialidad,
+            ProveedorModel.biografia
+        ).join(
+            ServicioModel, ProveedorModel.id == ServicioModel.proveedor_id
+        ).filter(
+            ProveedorModel.is_available == True,
+            ServicioModel.is_active == True
+        ).distinct().all()
+        
+        return [
+            {
+                "id": p.id,
+                "nombre": f"{p.nombre} {p.apellido}",
+                "especialidad": p.especialidad,
+                "biografia": p.biografia
+            }
+            for p in proveedores
+        ]
+        
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error")
+
+
+@router.get('/proveedor/{proveedor_id}', response_model=List[ServicioResponse])
+def listar_servicios_proveedor(
+    proveedor_id: int,
+    session: Session = Depends(get_session)
+):
+    """Lista servicios de un proveedor específico"""
+    try:
+        servicios = session.query(ServicioModel).filter(
+            ServicioModel.proveedor_id == proveedor_id,
+            ServicioModel.is_active == True
+        ).all()
+        
+        return [ServicioResponse.model_validate(s) for s in servicios]
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Error")
+
+
 @router.get('/buscar', response_model=List[ServicioResponse])
 def buscar_servicios(
     nombre: str = None,
     categoria: str = None,
     session: Session = Depends(get_session)
 ):
-    """
-    Busca servicios disponibles (para clientes)
-    """
+    """Busca servicios disponibles (para clientes)"""
     try:
         query = session.query(ServicioModel).filter(ServicioModel.is_active == True)
         
@@ -151,9 +194,7 @@ def obtener_servicio(
     servicio_id: int,
     session: Session = Depends(get_session)
 ):
-    """
-    Obtiene un servicio por ID
-    """
+    """Obtiene un servicio por ID"""
     try:
         servicio = session.query(ServicioModel).filter(
             ServicioModel.id == servicio_id
@@ -184,9 +225,7 @@ def actualizar_servicio(
     current_user: User = Depends(get_current_proveedor),
     session: Session = Depends(get_session)
 ):
-    """
-    Actualiza un servicio (solo el proveedor dueño)
-    """
+    """Actualiza un servicio (solo el proveedor dueño)"""
     try:
         from app.infrastructure.repositories.proveedor_repository import SQLAlchemyProveedorRepository
         proveedor_repo = SQLAlchemyProveedorRepository(session)
@@ -203,7 +242,6 @@ def actualizar_servicio(
                 detail="Servicio no encontrado o no autorizado"
             )
         
-        # Actualizar solo campos proporcionados
         if data.nombre is not None:
             servicio.nombre = data.nombre
         if data.descripcion is not None:
@@ -236,9 +274,7 @@ def eliminar_servicio(
     current_user: User = Depends(get_current_proveedor),
     session: Session = Depends(get_session)
 ):
-    """
-    Desactiva un servicio (soft delete)
-    """
+    """Desactiva un servicio (soft delete)"""
     try:
         from app.infrastructure.repositories.proveedor_repository import SQLAlchemyProveedorRepository
         proveedor_repo = SQLAlchemyProveedorRepository(session)
@@ -267,57 +303,3 @@ def eliminar_servicio(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error al eliminar servicio"
         )
-
-@router.get('/proveedores', response_model=List[dict])
-def listar_proveedores(session: Session = Depends(get_session)):
-    """
-    Lista todos los proveedores que tienen servicios activos
-    """
-    try:
-        from app.infrastructure.db.models.proveedor_model import ProveedorModel
-        
-        proveedores = session.query(
-            ProveedorModel.id,
-            ProveedorModel.nombre,
-            ProveedorModel.apellido,
-            ProveedorModel.especialidad,
-            ProveedorModel.biografia
-        ).join(
-            ServicioModel, ProveedorModel.id == ServicioModel.proveedor_id
-        ).filter(
-            ProveedorModel.is_available == True,
-            ServicioModel.is_active == True
-        ).distinct().all()
-        
-        return [
-            {
-                "id": p.id,
-                "nombre": f"{p.nombre} {p.apellido}",
-                "especialidad": p.especialidad,
-                "biografia": p.biografia
-            }
-            for p in proveedores
-        ]
-        
-    except Exception as e:
-        print(f"Error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error")
-
-@router.get('/proveedor/{proveedor_id}', response_model=List[ServicioResponse])
-def listar_servicios_proveedor(
-    proveedor_id: int,
-    session: Session = Depends(get_session)
-):
-    """
-    Lista servicios de un proveedor específico
-    """
-    try:
-        servicios = session.query(ServicioModel).filter(
-            ServicioModel.proveedor_id == proveedor_id,
-            ServicioModel.is_active == True
-        ).all()
-        
-        return [ServicioResponse.model_validate(s) for s in servicios]
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Error")

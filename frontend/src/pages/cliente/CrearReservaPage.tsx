@@ -9,21 +9,23 @@ import { recursosApi, horariosApi, reservasApi } from '../../services/api';
 import type { Recurso, HorarioDisponible } from '../../types';
 import { formatCurrency } from '../../utils/formatters';
 import { DIAS_SEMANA } from '../../utils/constants';
-import { ArrowLeft, AlertCircle } from 'lucide-react';
+import { ArrowLeft, AlertCircle, DollarSign, CheckCircle } from 'lucide-react';
+import api from '../../services/api';
 
 export const CrearReservaPage: React.FC = () => {
   const { recursoId } = useParams();
   const navigate = useNavigate();
   const [recurso, setRecurso] = useState<Recurso | null>(null);
   const [horarios, setHorarios] = useState<HorarioDisponible[]>([]);
-  const [reservasExistentes, setReservasExistentes] = useState<any[]>([]);
+  const [horariosOcupados, setHorariosOcupados] = useState<string[]>([]);
   const [fecha, setFecha] = useState('');
   const [horaSeleccionada, setHoraSeleccionada] = useState('');
   const [precioSeleccionado, setPrecioSeleccionado] = useState(0);
   
-  // Nuevo: Pago
+  // Pago
   const [mostrarPago, setMostrarPago] = useState(false);
-  const [seña, setSeña] = useState('');
+  const [tipoPago, setTipoPago] = useState<'completo' | 'seña'>('completo');
+  const [montoSeña, setMontoSeña] = useState('');
   const [metodoPago, setMetodoPago] = useState('efectivo');
   
   const [isLoading, setIsLoading] = useState(false);
@@ -36,7 +38,7 @@ export const CrearReservaPage: React.FC = () => {
 
   useEffect(() => {
     if (fecha) {
-      cargarReservasDelDia();
+      cargarDisponibilidad();
     }
   }, [fecha]);
 
@@ -61,13 +63,18 @@ export const CrearReservaPage: React.FC = () => {
     }
   };
 
-  const cargarReservasDelDia = async () => {
+  const cargarDisponibilidad = async () => {
     try {
-      // Aquí deberías tener un endpoint para obtener reservas de un día específico
-      // Por ahora simularemos
-      setReservasExistentes([]);
+      const response = await api.get(`/reservas/recurso/${recursoId}/disponibilidad`, {
+        params: { fecha }
+      });
+      
+      // Extraer las horas ocupadas
+      const ocupados = response.data.map((r: any) => r.hora_inicio);
+      setHorariosOcupados(ocupados);
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error al cargar disponibilidad:', error);
+      setHorariosOcupados([]);
     }
   };
 
@@ -91,14 +98,7 @@ export const CrearReservaPage: React.FC = () => {
       const minutos = minutosActuales % 60;
       const horaStr = `${String(horas).padStart(2, '0')}:${String(minutos).padStart(2, '0')}`;
       
-      // Verificar si está ocupado
-      const estaOcupado = reservasExistentes.some(r => {
-        const inicioReserva = new Date(r.fecha_hora_inicio).getHours() * 60 + 
-                              new Date(r.fecha_hora_inicio).getMinutes();
-        const finReserva = new Date(r.fecha_hora_fin).getHours() * 60 + 
-                          new Date(r.fecha_hora_fin).getMinutes();
-        return minutosActuales >= inicioReserva && minutosActuales < finReserva;
-      });
+      const estaOcupado = horariosOcupados.includes(horaStr);
       
       slots.push({
         hora: horaStr,
@@ -118,10 +118,20 @@ export const CrearReservaPage: React.FC = () => {
       return;
     }
 
-    const señaMonto = parseFloat(seña) || 0;
-    if (señaMonto > precioSeleccionado) {
-      alert('La seña no puede ser mayor al precio total');
-      return;
+    let señaMonto = 0;
+    if (tipoPago === 'seña') {
+      señaMonto = parseFloat(montoSeña) || 0;
+      if (señaMonto <= 0) {
+        alert('Ingresa un monto de seña válido');
+        return;
+      }
+      if (señaMonto > precioSeleccionado) {
+        alert('La seña no puede ser mayor al precio total');
+        return;
+      }
+    } else {
+      // Pago completo
+      señaMonto = precioSeleccionado;
     }
 
     setIsLoading(true);
@@ -133,8 +143,8 @@ export const CrearReservaPage: React.FC = () => {
         fecha_hora_inicio: fechaHoraInicio,
         duracion_minutos: 60,
         notas_cliente: undefined,
-        seña: señaMonto > 0 ? señaMonto : undefined,
-        metodo_pago: señaMonto > 0 ? metodoPago : undefined,
+        seña: señaMonto,
+        metodo_pago: metodoPago,
       });
       
       alert('¡Reserva creada exitosamente!');
@@ -184,7 +194,7 @@ export const CrearReservaPage: React.FC = () => {
               {horariosDisponibles.length === 0 ? (
                 <div className="text-center py-8 bg-gray-50 rounded-lg">
                   <p className="text-gray-500">
-                    No hay horarios disponibles para este día
+                    No hay horarios disponibles para {DIAS_SEMANA[new Date(fecha + 'T00:00:00').getDay() === 0 ? 6 : new Date(fecha + 'T00:00:00').getDay() - 1]}
                   </p>
                 </div>
               ) : (
@@ -200,6 +210,8 @@ export const CrearReservaPage: React.FC = () => {
                             setHoraSeleccionada(slot.hora);
                             setPrecioSeleccionado(slot.precio);
                             setMostrarPago(true);
+                            setTipoPago('completo');
+                            setMontoSeña('');
                           }
                         }}
                         className={`p-3 rounded-lg border-2 transition-all ${
@@ -234,56 +246,106 @@ export const CrearReservaPage: React.FC = () => {
           {mostrarPago && horaSeleccionada && (
             <div className="mt-6 space-y-4">
               <div className="border-t pt-4">
-                <h4 className="font-semibold mb-3">Información de Pago (Opcional)</h4>
+                <h4 className="font-semibold mb-3 flex items-center gap-2">
+                  <DollarSign className="w-5 h-5 text-primary-600" />
+                  Información de Pago
+                </h4>
                 
-                <div className="grid md:grid-cols-2 gap-4">
-                  <Input
-                    type="number"
-                    label="Seña / Adelanto"
-                    value={seña}
-                    onChange={(e) => setSeña(e.target.value)}
-                    placeholder="0"
-                    min="0"
-                    max={precioSeleccionado.toString()}
-                    step="0.01"
-                  />
+                {/* Tipo de pago */}
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  <button
+                    type="button"
+                    onClick={() => setTipoPago('completo')}
+                    className={`p-4 border-2 rounded-lg transition-all ${
+                      tipoPago === 'completo'
+                        ? 'border-green-600 bg-green-50'
+                        : 'border-gray-300 hover:border-gray-400'
+                    }`}
+                  >
+                    <CheckCircle className={`w-6 h-6 mx-auto mb-2 ${
+                      tipoPago === 'completo' ? 'text-green-600' : 'text-gray-400'
+                    }`} />
+                    <div className="font-semibold text-sm">Pago Completo</div>
+                    <div className="text-xs text-gray-600 mt-1">
+                      {formatCurrency(precioSeleccionado)}
+                    </div>
+                  </button>
 
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Método de pago
-                    </label>
-                    <select
-                      value={metodoPago}
-                      onChange={(e) => setMetodoPago(e.target.value)}
-                      className="input-field"
-                    >
-                      <option value="efectivo">Efectivo</option>
-                      <option value="tarjeta">Tarjeta</option>
-                      <option value="transferencia">Transferencia</option>
-                    </select>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setTipoPago('seña')}
+                    className={`p-4 border-2 rounded-lg transition-all ${
+                      tipoPago === 'seña'
+                        ? 'border-primary-600 bg-primary-50'
+                        : 'border-gray-300 hover:border-gray-400'
+                    }`}
+                  >
+                    <DollarSign className={`w-6 h-6 mx-auto mb-2 ${
+                      tipoPago === 'seña' ? 'text-primary-600' : 'text-gray-400'
+                    }`} />
+                    <div className="font-semibold text-sm">Seña / Adelanto</div>
+                    <div className="text-xs text-gray-600 mt-1">
+                      Pagar el resto después
+                    </div>
+                  </button>
                 </div>
 
-                {parseFloat(seña) > 0 && (
-                  <div className="p-3 bg-blue-50 rounded-lg text-sm text-blue-800">
-                    <p>Seña: {formatCurrency(parseFloat(seña))}</p>
-                    <p>Saldo restante: {formatCurrency(precioSeleccionado - parseFloat(seña))}</p>
+                {tipoPago === 'seña' && (
+                  <div className="mb-4">
+                    <Input
+                      type="number"
+                      label="Monto de la seña"
+                      value={montoSeña}
+                      onChange={(e) => setMontoSeña(e.target.value)}
+                      placeholder="0"
+                      min="0"
+                      max={precioSeleccionado.toString()}
+                      step="0.01"
+                      required
+                    />
+                    {parseFloat(montoSeña) > 0 && parseFloat(montoSeña) <= precioSeleccionado && (
+                      <div className="mt-2 p-2 bg-blue-50 rounded text-sm text-blue-800">
+                        Saldo restante: {formatCurrency(precioSeleccionado - parseFloat(montoSeña))}
+                      </div>
+                    )}
                   </div>
                 )}
+
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Método de pago
+                  </label>
+                  <select
+                    value={metodoPago}
+                    onChange={(e) => setMetodoPago(e.target.value)}
+                    className="input-field"
+                  >
+                    <option value="efectivo">Efectivo</option>
+                    <option value="tarjeta">Tarjeta</option>
+                    <option value="transferencia">Transferencia</option>
+                  </select>
+                </div>
               </div>
 
-              <div className="p-4 bg-primary-50 rounded-lg">
+              <div className="p-4 bg-primary-50 rounded-lg border border-primary-200">
                 <h4 className="font-semibold mb-2">Resumen:</h4>
-                <p>Fecha: {new Date(fecha).toLocaleDateString('es-AR')}</p>
-                <p>Horario: {horaSeleccionada}</p>
-                <p className="text-lg font-bold mt-2">
-                  Total: {formatCurrency(precioSeleccionado)}
-                </p>
-                {parseFloat(seña) > 0 && (
-                  <p className="text-sm text-gray-600 mt-1">
-                    A pagar ahora: {formatCurrency(parseFloat(seña))}
-                  </p>
-                )}
+                <div className="space-y-1 text-sm">
+                  <p><strong>Fecha:</strong> {new Date(fecha).toLocaleDateString('es-AR')}</p>
+                  <p><strong>Horario:</strong> {horaSeleccionada}</p>
+                  <p><strong>Precio total:</strong> {formatCurrency(precioSeleccionado)}</p>
+                  {tipoPago === 'completo' ? (
+                    <p className="text-green-700 font-semibold">
+                      ✓ Pago completo: {formatCurrency(precioSeleccionado)}
+                    </p>
+                  ) : (
+                    <>
+                      <p><strong>Seña a pagar ahora:</strong> {formatCurrency(parseFloat(montoSeña) || 0)}</p>
+                      <p className="text-orange-700">
+                        <strong>Saldo pendiente:</strong> {formatCurrency(precioSeleccionado - (parseFloat(montoSeña) || 0))}
+                      </p>
+                    </>
+                  )}
+                </div>
                 <Button
                   onClick={handleReservar}
                   isLoading={isLoading}

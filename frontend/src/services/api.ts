@@ -9,6 +9,7 @@ import type {
   HorarioDisponible,
   Reserva,
   ReservaDetail,
+  Proveedor,
 } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
@@ -20,7 +21,6 @@ const api = axios.create({
   },
 });
 
-// Interceptor para agregar token a todas las requests
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) {
@@ -29,7 +29,6 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Interceptor para manejar errores de autenticación
 api.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
@@ -65,6 +64,14 @@ export const authApi = {
   },
 };
 
+// ===== PROVEEDORES =====
+export const proveedoresApi = {
+  listar: async (): Promise<Proveedor[]> => {
+    const response = await api.get<Proveedor[]>('/servicios/proveedores');
+    return response.data;
+  },
+};
+
 // ===== SERVICIOS =====
 export const serviciosApi = {
   buscar: async (params?: { nombre?: string; categoria?: string }): Promise<Servicio[]> => {
@@ -84,6 +91,11 @@ export const serviciosApi = {
 
   getById: async (id: number): Promise<Servicio> => {
     const response = await api.get<Servicio>(`/servicios/${id}`);
+    return response.data;
+  },
+
+  getByProveedor: async (proveedorId: number): Promise<Servicio[]> => {
+    const response = await api.get<Servicio[]>(`/servicios/proveedor/${proveedorId}`);
     return response.data;
   },
 };
@@ -133,13 +145,24 @@ export const horariosApi = {
     return response.data;
   },
 
-  getByRecurso: async (recursoId: number): Promise<HorarioDisponible[]> => {
-    const response = await api.get<HorarioDisponible[]>(`/horarios/recurso/${recursoId}`);
+  actualizar: async (id: number, data: {
+    recurso_id: number;
+    dia_semana: number;
+    hora_inicio: string;
+    hora_fin: string;
+    precio: number;
+    duracion_minutos: number;
+  }) => {
+    const response = await api.patch(`/horarios/${id}`, data);
     return response.data;
   },
 
-  getDisponibilidad: async (recursoId: number, fecha: string) => {
-    const response = await api.get(`/horarios/disponibilidad/${recursoId}/${fecha}`);
+  eliminar: async (id: number) => {
+    await api.delete(`/horarios/${id}`);
+  },
+
+  getByRecurso: async (recursoId: number): Promise<HorarioDisponible[]> => {
+    const response = await api.get<HorarioDisponible[]>(`/horarios/recurso/${recursoId}`);
     return response.data;
   },
 };
@@ -151,6 +174,8 @@ export const reservasApi = {
     fecha_hora_inicio: string;
     duracion_minutos: number;
     notas_cliente?: string;
+    seña?: number;
+    metodo_pago?: string;
   }): Promise<Reserva> => {
     const response = await api.post<Reserva>('/reservas/', data);
     return response.data;
@@ -244,6 +269,12 @@ export const proveedorApi = {
     return response.data;
   },
 
+  getReservasPorRecurso: async (recursoId: number, fecha?: string): Promise<ReservaDetail[]> => {
+    const params = fecha ? { fecha } : {};
+    const response = await api.get(`/reservas/proveedor/recurso/${recursoId}`, { params });
+    return response.data;
+  },
+
   confirmarReserva: async (id: number) => {
     const response = await api.patch(`/reservas/proveedor/${id}/confirmar`);
     return response.data;
@@ -253,7 +284,19 @@ export const proveedorApi = {
     const response = await api.patch(`/reservas/proveedor/${id}/completar`);
     return response.data;
   },
-};
 
+  marcarNoAsistio: async (id: number, notas?: string) => {
+    const response = await api.patch(`/reservas/proveedor/${id}/no-asistio`, { notas });
+    return response.data;
+  },
+
+  confirmarPago: async (id: number, data: {
+    pago_confirmado: boolean;
+    notas_pago?: string;
+  }) => {
+    const response = await api.patch(`/reservas/proveedor/${id}/confirmar-pago`, data);
+    return response.data;
+  },
+};
 
 export default api;

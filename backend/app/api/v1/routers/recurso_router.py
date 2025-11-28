@@ -1,3 +1,6 @@
+# ============================================
+# api/v1/routers/recurso_router.py (CORREGIDO - SIN ENDPOINTS DE RESERVA)
+# ============================================
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List

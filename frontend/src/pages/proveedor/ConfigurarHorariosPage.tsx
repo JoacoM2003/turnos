@@ -7,7 +7,7 @@ import { Input } from '../../components/common/Input';
 import { Loading } from '../../components/common/Loading';
 import { recursosApi, horariosApi, proveedorApi } from '../../services/api';
 import type { Recurso, HorarioDisponible } from '../../types';
-import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Plus, Edit2, Trash2, X } from 'lucide-react';
 import { DIAS_SEMANA } from '../../utils/constants';
 import { formatTime, formatCurrency } from '../../utils/formatters';
 
@@ -18,6 +18,8 @@ export const ConfigurarHorariosPage: React.FC = () => {
   const [horarios, setHorarios] = useState<HorarioDisponible[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingHorario, setEditingHorario] = useState<HorarioDisponible | null>(null);
   
   const [horarioData, setHorarioData] = useState({
     dias_semana: [] as number[],
@@ -44,6 +46,18 @@ export const ConfigurarHorariosPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const resetForm = () => {
+    setHorarioData({
+      dias_semana: [],
+      hora_inicio: '09:00',
+      hora_fin: '22:00',
+      precio: '',
+      duracion_minutos: '60',
+    });
+    setIsEditing(false);
+    setEditingHorario(null);
   };
 
   const toggleDia = (dia: number) => {
@@ -74,17 +88,63 @@ export const ConfigurarHorariosPage: React.FC = () => {
       });
       
       setShowModal(false);
-      setHorarioData({
-        dias_semana: [],
-        hora_inicio: '09:00',
-        hora_fin: '22:00',
-        precio: '',
-        duracion_minutos: '60',
-      });
+      resetForm();
       cargarDatos();
+      alert('Horarios creados exitosamente');
+    } catch (error: any) {
+      console.error('Error:', error);
+      alert(error.response?.data?.detail || 'Error al crear horarios');
+    }
+  };
+
+  const handleEditarHorario = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!editingHorario) return;
+
+    try {
+      await horariosApi.actualizar(editingHorario.id, {
+        recurso_id: Number(recursoId),
+        dia_semana: horarioData.dias_semana[0],
+        hora_inicio: horarioData.hora_inicio + ':00',
+        hora_fin: horarioData.hora_fin + ':00',
+        precio: Number(horarioData.precio),
+        duracion_minutos: Number(horarioData.duracion_minutos),
+      });
+      
+      setShowModal(false);
+      resetForm();
+      cargarDatos();
+      alert('Horario actualizado exitosamente');
+    } catch (error: any) {
+      console.error('Error:', error);
+      alert(error.response?.data?.detail || 'Error al actualizar horario');
+    }
+  };
+
+  const handleAbrirEditar = (horario: HorarioDisponible) => {
+    setIsEditing(true);
+    setEditingHorario(horario);
+    setHorarioData({
+      dias_semana: [horario.dia_semana],
+      hora_inicio: horario.hora_inicio.substring(0, 5),
+      hora_fin: horario.hora_fin.substring(0, 5),
+      precio: horario.precio.toString(),
+      duracion_minutos: horario.duracion_minutos.toString(),
+    });
+    setShowModal(true);
+  };
+
+  const handleEliminar = async (id: number) => {
+    if (!confirm('¿Seguro que quieres eliminar este horario?')) return;
+
+    try {
+      await horariosApi.eliminar(id);
+      cargarDatos();
+      alert('Horario eliminado');
     } catch (error) {
       console.error('Error:', error);
-      alert('Error al crear horarios');
+      alert('Error al eliminar horario');
     }
   };
 
@@ -115,7 +175,7 @@ export const ConfigurarHorariosPage: React.FC = () => {
             <h1 className="text-3xl font-bold">{recurso?.nombre}</h1>
             <p className="text-gray-600">Configuración de Horarios y Precios</p>
           </div>
-          <Button onClick={() => setShowModal(true)}>
+          <Button onClick={() => { resetForm(); setShowModal(true); }}>
             <Plus className="w-5 h-5 mr-2" />
             Agregar Horarios
           </Button>
@@ -151,10 +211,24 @@ export const ConfigurarHorariosPage: React.FC = () => {
                           {horario.duracion_minutos} min
                         </span>
                       </div>
-                      <div className="text-right">
+                      <div className="flex items-center gap-3">
                         <span className="font-semibold text-primary-600">
                           {formatCurrency(horario.precio)}
                         </span>
+                        <button
+                          onClick={() => handleAbrirEditar(horario)}
+                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="Editar"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleEliminar(horario.id)}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Eliminar"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -164,33 +238,50 @@ export const ConfigurarHorariosPage: React.FC = () => {
           </div>
         )}
 
-        {/* Modal Crear Horarios */}
+        {/* Modal Crear/Editar Horarios */}
         {showModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <Card className="max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-              <h2 className="text-2xl font-bold mb-4">Configurar Horarios</h2>
-              <form onSubmit={handleCrearHorarios}>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-2xl font-bold">
+                  {isEditing ? 'Editar Horario' : 'Configurar Horarios'}
+                </h2>
+                <button
+                  onClick={() => { setShowModal(false); resetForm(); }}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <form onSubmit={isEditing ? handleEditarHorario : handleCrearHorarios}>
                 {/* Selector de días */}
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Días de la semana <span className="text-red-500">*</span>
+                    {isEditing ? 'Día de la semana' : 'Días de la semana'} <span className="text-red-500">*</span>
                   </label>
-                  <div className="grid grid-cols-7 gap-2">
-                    {DIAS_SEMANA.map((dia, index) => (
-                      <button
-                        key={index}
-                        type="button"
-                        onClick={() => toggleDia(index)}
-                        className={`p-2 text-sm rounded-lg border-2 transition-all ${
-                          horarioData.dias_semana.includes(index)
-                            ? 'border-primary-600 bg-primary-50 text-primary-700'
-                            : 'border-gray-300 hover:border-gray-400'
-                        }`}
-                      >
-                        {dia.slice(0, 3)}
-                      </button>
-                    ))}
-                  </div>
+                  {isEditing ? (
+                    <div className="p-3 bg-gray-100 rounded-lg font-medium">
+                      {DIAS_SEMANA[horarioData.dias_semana[0]]}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-7 gap-2">
+                      {DIAS_SEMANA.map((dia, index) => (
+                        <button
+                          key={index}
+                          type="button"
+                          onClick={() => toggleDia(index)}
+                          className={`p-2 text-sm rounded-lg border-2 transition-all ${
+                            horarioData.dias_semana.includes(index)
+                              ? 'border-primary-600 bg-primary-50 text-primary-700'
+                              : 'border-gray-300 hover:border-gray-400'
+                          }`}
+                        >
+                          {dia.slice(0, 3)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid md:grid-cols-2 gap-4">
@@ -237,12 +328,12 @@ export const ConfigurarHorariosPage: React.FC = () => {
 
                 <div className="flex gap-2 mt-6">
                   <Button type="submit" className="flex-1">
-                    Crear Horarios
+                    {isEditing ? 'Actualizar' : 'Crear Horarios'}
                   </Button>
                   <Button
                     type="button"
                     variant="secondary"
-                    onClick={() => setShowModal(false)}
+                    onClick={() => { setShowModal(false); resetForm(); }}
                     className="flex-1"
                   >
                     Cancelar

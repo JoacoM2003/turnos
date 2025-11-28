@@ -33,6 +33,13 @@ export interface AuthResponse {
   user: User;
 }
 
+export interface Proveedor {
+  id: number;
+  nombre: string;
+  especialidad: string;
+  biografia?: string;
+}
+
 export interface Servicio {
   id: number;
   proveedor_id: number;
@@ -40,6 +47,8 @@ export interface Servicio {
   descripcion?: string;
   categoria?: string;
   is_active: boolean;
+  recursos_count?: number;
+  recursos?: Recurso[];
 }
 
 export interface Recurso {
@@ -77,9 +86,10 @@ export interface Reserva {
   seña?: number;
   saldo_pendiente?: number;
   pago_completo: boolean;
-  pago_confirmado: boolean;  // NUEVO
+  pago_confirmado: boolean;
+  metodo_pago?: string;
   notas_cliente?: string;
-  notas_pago?: string;  // NUEVO
+  notas_pago?: string;
   created_at: string;
 }
 

@@ -18,6 +18,7 @@ import { MisServiciosPage } from './pages/proveedor/MisServiciosPage';
 import { RecursosPage } from './pages/proveedor/RecursosPage';
 import { ConfigurarHorariosPage } from './pages/proveedor/ConfigurarHorariosPage';
 import { ReservasProveedorPage } from './pages/proveedor/ReservasProveedorPage';
+import { ReservasPorRecursoPage } from './pages/proveedor/ReservasPorRecursoPage';
 
 function App() {
   return (
@@ -85,6 +86,14 @@ function App() {
             element={
               <ProtectedRoute requiredRole="proveedor">
                 <ReservasProveedorPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/proveedor/reservas-por-recurso"
+            element={
+              <ProtectedRoute requiredRole="proveedor">
+                <ReservasPorRecursoPage />
               </ProtectedRoute>
             }
           />
